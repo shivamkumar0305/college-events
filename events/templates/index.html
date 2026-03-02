@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Campus Events</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #111830;
+      --text: #e7ecff;
+      --muted: #9fb0e3;
+      --primary: #5b8cff;
+      --accent: #29d3a6;
+      --danger: #ff5f7a;
+      --border: #28345a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: linear-gradient(180deg, #090d1a, #0f1730);
+      color: var(--text);
+    }
+    .container { width: min(1100px, 92vw); margin: 24px auto 80px; }
+    h1 { margin: 0 0 4px; font-size: 1.8rem; }
+    .subtitle { color: var(--muted); margin: 0 0 20px; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .card {
+      background: rgba(17, 24, 48, 0.95);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
+    }
+    .card h3 { margin-top: 0; font-size: 1.05rem; }
+    input, textarea, select, button {
+      width: 100%;
+      padding: 10px 12px;
+      margin-top: 8px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #0f1630;
+      color: var(--text);
+    }
+    button {
+      background: linear-gradient(90deg, #4f7aff, #5b8cff);
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button.secondary { background: #1a2446; }
+    button.danger { background: #5a2230; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; background: #1c2650; color: #bdd0ff; }
+    .event { border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin-top: 10px; }
+    .event-title { margin: 0; font-size: 1.02rem; }
+    .meta { margin: 6px 0 0; color: var(--muted); font-size: 0.86rem; }
+    .toolbar { display: flex; gap: 10px; margin-bottom: 10px; }
+    .toolbar input { margin-top: 0; }
+    .status { margin-top: 8px; font-size: 0.85rem; color: #b7c7f8; min-height: 1.2em; }
+    .split { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Campus Events</h1>
+    <p class="subtitle">Clean, minimal dashboard connected to your Django API.</p>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Authentication</h3>
+        <div class="row">
+          <input id="email" type="email" placeholder="Email" />
+          <input id="username" type="text" placeholder="Username" />
+        </div>
+        <div class="row">
+          <input id="password" type="password" placeholder="Password" />
+          <select id="role">
+            <option value="student">Student</option>
+            <option value="organizer">Organizer</option>
+          </select>
+        </div>
+        <div class="row">
+          <input id="college" type="text" placeholder="College (students)" />
+          <input id="branch" type="text" placeholder="Branch (students)" />
+        </div>
+        <input id="organization" type="text" placeholder="Organization Name (organizers)" />
+        <div class="row" style="margin-top:10px;">
+          <button id="registerBtn">Register</button>
+          <button id="loginBtn" class="secondary">Login</button>
+        </div>
+        <p class="status" id="authStatus"></p>
+      </div>
+
+      <div class="card">
+        <h3>Profile</h3>
+        <button id="profileBtn" class="secondary">Load My Profile</button>
+        <pre id="profileOutput" style="white-space:pre-wrap"></pre>
+        <p class="status" id="profileStatus"></p>
+      </div>
+    </div>
+
+    <div class="split" style="margin-top: 16px;">
+      <div class="card">
+        <h3>Events</h3>
+        <div class="toolbar">
+          <input id="search" placeholder="Search events..." />
+          <button id="refreshEvents" class="secondary">Refresh</button>
+        </div>
+        <div id="eventsList"></div>
+      </div>
+
+      <div class="card">
+        <h3>Create Event (Organizer)</h3>
+        <input id="eventTitle" placeholder="Title" />
+        <textarea id="eventDescription" rows="3" placeholder="Description"></textarea>
+        <div class="row">
+          <input id="startDatetime" type="datetime-local" />
+          <input id="endDatetime" type="datetime-local" />
+        </div>
+        <input id="venue" placeholder="Venue" />
+        <input id="categoryIds" placeholder="Category IDs (comma-separated)" />
+        <button id="createEventBtn">Create Event</button>
+        <p class="status" id="eventCreateStatus"></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = '/api';
+    let accessToken = localStorage.getItem('accessToken') || '';
+
+    const $ = (id) => document.getElementById(id);
+
+    async function request(path, options = {}) {
+      const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+      if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+      const res = await fetch(`${API}${path}`, { ...options, headers });
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!res.ok) throw new Error(data.detail || data.error || JSON.stringify(data));
+      return data;
+    }
+
+    function showStatus(id, message) { $(id).textContent = message; }
+
+    function authPayload() {
+      const role = $('role').value;
+      return {
+        email: $('email').value,
+        username: $('username').value,
+        password: $('password').value,
+        password_confirm: $('password').value,
+        role,
+        college: role === 'student' ? $('college').value : '',
+        branch: role === 'student' ? $('branch').value : '',
+        organization_name: role === 'organizer' ? $('organization').value : '',
+      };
+    }
+
+    $('registerBtn').onclick = async () => {
+      try {
+        const data = await request('/auth/register/', { method: 'POST', body: JSON.stringify(authPayload()) });
+        accessToken = data.tokens.access;
+        localStorage.setItem('accessToken', accessToken);
+        showStatus('authStatus', 'Registered successfully. Token saved.');
+        await loadEvents();
+      } catch (e) { showStatus('authStatus', `Register failed: ${e.message}`); }
+    };
+
+    $('loginBtn').onclick = async () => {
+      try {
+        const data = await request('/auth/login/', {
+          method: 'POST',
+          body: JSON.stringify({ email: $('email').value, password: $('password').value }),
+        });
+        accessToken = data.tokens.access;
+        localStorage.setItem('accessToken', accessToken);
+        showStatus('authStatus', 'Logged in successfully.');
+        await loadEvents();
+      } catch (e) { showStatus('authStatus', `Login failed: ${e.message}`); }
+    };
+
+    $('profileBtn').onclick = async () => {
+      try {
+        const data = await request('/users/me/');
+        $('profileOutput').textContent = JSON.stringify(data, null, 2);
+        showStatus('profileStatus', 'Profile loaded.');
+      } catch (e) { showStatus('profileStatus', `Profile failed: ${e.message}`); }
+    };
+
+    async function loadEvents() {
+      const search = $('search').value;
+      try {
+        const data = await request(`/events/${search ? `?search=${encodeURIComponent(search)}` : ''}`);
+        const rows = data.results || data;
+        $('eventsList').innerHTML = rows.map(event => `
+          <div class="event">
+            <p class="event-title">${event.title}</p>
+            <span class="pill">${event.organization_name || 'Organization'}</span>
+            <p class="meta">${new Date(event.start_datetime).toLocaleString()} • ${event.venue || 'Online'}</p>
+            <p class="meta">${event.description || ''}</p>
+            <div class="row">
+              <button class="secondary" onclick="rsvpEvent(${event.id})">RSVP</button>
+              <button class="danger" onclick="loadAttendees(${event.id})">Attendees</button>
+            </div>
+          </div>
+        `).join('') || '<p class="meta">No events found.</p>';
+      } catch (e) {
+        $('eventsList').innerHTML = `<p class="meta">Failed to load events: ${e.message}</p>`;
+      }
+    }
+
+    window.rsvpEvent = async (eventId) => {
+      try {
+        await request('/rsvps/', { method: 'POST', body: JSON.stringify({ event: eventId }) });
+        alert('RSVP submitted.');
+      } catch (e) { alert(`RSVP failed: ${e.message}`); }
+    };
+
+    window.loadAttendees = async (eventId) => {
+      try {
+        const data = await request(`/events/${eventId}/attendees/`);
+        alert(`Confirmed attendees: ${(data.results || data).length}`);
+      } catch (e) { alert(`Attendee view failed: ${e.message}`); }
+    };
+
+    $('createEventBtn').onclick = async () => {
+      try {
+        const category_ids = $('categoryIds').value
+          .split(',')
+          .map(v => parseInt(v.trim(), 10))
+          .filter(Boolean);
+
+        await request('/events/', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: $('eventTitle').value,
+            description: $('eventDescription').value,
+            organization_name: $('organization').value,
+            category_ids,
+            tags: 'campus,event',
+            start_datetime: new Date($('startDatetime').value).toISOString(),
+            end_datetime: new Date($('endDatetime').value).toISOString(),
+            venue: $('venue').value,
+            is_online: false,
+            meeting_link: '',
+            media_files: [],
+            max_capacity: 100,
+            is_registration_open: true,
+            is_featured: false,
+          }),
+        });
+
+        showStatus('eventCreateStatus', 'Event created.');
+        await loadEvents();
+      } catch (e) { showStatus('eventCreateStatus', `Create failed: ${e.message}`); }
+    };
+
+    $('refreshEvents').onclick = loadEvents;
+    $('search').oninput = () => { clearTimeout(window.__searchDebounce); window.__searchDebounce = setTimeout(loadEvents, 250); };
+    loadEvents();
+  </script>
+</body>
+</html>
