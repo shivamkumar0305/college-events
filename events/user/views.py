@@ -11,25 +11,24 @@ User = get_user_model()
 
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
-    permissions_classes = [permissions.AllowAny]
+    permission_classes = [permissions.AllowAny]
 
-    def create(self,request,*args, **kwargs):
-        serializer =self.get_serializer(data=request.data)
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
         refresh = RefreshToken.for_user(user)
 
         return Response({
-            'user':UserSerializer(user).data,
-            'tokens':{
+            'user': UserSerializer(user).data,
+            'tokens': {
                 'refresh': str(refresh),
-                'tokens':{
-                    'refresh' : str(refresh),
-                    'access' : str(refresh.access_token),
-                }
+                'access': str(refresh.access_token),
             }
-        }) 
+        }, status=status.HTTP_201_CREATED)
+
+
 @extend_schema(request=LoginSerializer)
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
